@@ -30,36 +30,32 @@ type (
 )
 
 func init() {
-	// if CONSUMER_KEY == "" || CONSUMER_KEY_SECRET == "" || ACCESS_TOKEN == "" || ACCESS_SECRET == "" {
-	// 	log.Fatalf("Required Env not found")
-	// }
-	// oauth2 configures a client that uses app credentials to keep a fresh token
-	// conf := GetConfigurationEnv()
+
+	conf := GetConfigurationEnv()
+	config := oauth1.NewConfig(conf.APIKey, conf.APIKeySecret)
+	token := oauth1.NewToken(conf.AccessToken, conf.AccessTokenSecret)
+	httpClient := config.Client(oauth1.NoContext, token)
+
+	//oauth2 configures a client that uses app credentials to keep a fresh token
 	// config := &clientcredentials.Config{
 	// 	ClientID:     conf.APIKey,
 	// 	ClientSecret: conf.APIKeySecret,
 	// 	TokenURL:     "https://api.twitter.com/oauth2/token",
 	// }
-	conf := GetConfigurationEnv()
+	// // http.Client will automatically authorize Requests
+	// httpClient := config.Client(context.Background())
 
-	config := oauth1.NewConfig(conf.APIKey, conf.APIKeySecret)
-	httpClient := config.Client(oauth1.NoContext, &oauth1.Token{
-		Token:       conf.AccessToken,
-		TokenSecret: conf.AccessTokenSecret,
-	})
+	// Twitter clientApiV1
+	clientApiV1 := twitter.NewClient(httpClient)
 
-	// Twitter client
-	client := twitter.NewClient(httpClient)
-
-	clientV2 := &twitterV2.Client{
+	clientApiV2 := &twitterV2.Client{
 		Authorizer: &authorize{},
 		Client:     httpClient,
 		Host:       "https://api.twitter.com",
 	}
-
 	instance = &Connection{
-		TwtCliV1: client,
-		TwtCliV2: clientV2,
+		TwtCliV1: clientApiV1,
+		TwtCliV2: clientApiV2,
 	}
 
 }
