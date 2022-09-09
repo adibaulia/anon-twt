@@ -1,8 +1,25 @@
 package models
 
-import "github.com/dghubble/go-twitter/twitter"
+import (
+	"sync"
+
+	"github.com/dghubble/go-twitter/twitter"
+)
 
 type (
+	UsersConvo struct {
+		sync.Mutex
+		Users map[string]UserConvo
+	}
+
+	UserConvo struct {
+		TwittID       string
+		Username      string
+		Name          string
+		Status        Status
+		TargetTwittID string
+	}
+
 	WebhookEvents struct {
 		ForUserID           string                        `json:"for_user_id"`
 		DirectMessageEvents *[]twitter.DirectMessageEvent `json:"direct_message_events"`

@@ -53,12 +53,16 @@ func webhookRouter(events *models.WebhookEvents) {
 		for _, event := range *events.FollowEvents {
 			go svcs.SendWelcomeMessage(event)
 		}
+	case events.DirectMessageEvents != nil:
+		for _, event := range *events.DirectMessageEvents {
+			go svcs.DirectMessagesEventProcessor(event)
+		}
 	}
 }
 
 //CRC Check from securing webhooks twitter api
 func CRC(c *gin.Context) {
-	log.Printf("CRC check from twitter API")
+	log.Info("CRC check from twitter API")
 
 	secret := []byte(config.GetConf().APIKeySecret)
 	message := []byte(c.Query("crc_token"))
@@ -72,6 +76,6 @@ func CRC(c *gin.Context) {
 	resp := map[string]string{
 		"response_token": "sha256=" + token,
 	}
-	log.Printf("CRC token successfully checked")
+	log.Info("CRC token successfully checked")
 	c.JSON(http.StatusOK, resp)
 }

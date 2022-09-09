@@ -17,6 +17,7 @@ func main() {
 	conn := config.GetInstance()
 
 	r := gin.Default()
+	r.Use(config.Logger())
 	svc := services.NewService(conn)
 	api.Router(r, svc)
 

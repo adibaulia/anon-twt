@@ -28,8 +28,8 @@ type (
 		BearerToken       string `mapstructure:"BearerToken"`
 		AccessToken       string `mapstructure:"AccessToken"`
 		AccessTokenSecret string `mapstructure:"AccessTokenSecret"`
-		logLevel          string `mapstructure:"logLevel"`
-		logPath           string `mapstructure:"logPath"`
+		LogLevel          string `mapstructure:"logLevel"`
+		LogPath           string `mapstructure:"logPath"`
 	}
 )
 
