@@ -2,8 +2,8 @@ package services
 
 import (
 	"fmt"
+	"net/http"
 
-	"github.com/adibaulia/anon-twt/config"
 	"github.com/adibaulia/anon-twt/internal/models"
 	"github.com/dghubble/go-twitter/twitter"
 	log "github.com/sirupsen/logrus"
@@ -11,22 +11,26 @@ import (
 
 type (
 	svc struct {
-		client *config.Connection
+		TwtCli
 	}
 
 	Serve interface {
 		SendWelcomeMessage(models.FollowEvent) error
 		DirectMessagesEventProcessor(twitter.DirectMessageEvent) error
 	}
+
+	TwtCli interface {
+		EventsNew(params *twitter.DirectMessageEventsNewParams) (*twitter.DirectMessageEvent, *http.Response, error)
+	}
 )
 
-var convos *models.UsersConvo
+var Convos *models.UsersConvo
 
-func NewService(client *config.Connection) *svc {
-	convos = &models.UsersConvo{
+func NewService(twtCli TwtCli) *svc {
+	Convos = &models.UsersConvo{
 		Users: map[string]models.UserConvo{},
 	}
-	return &svc{client}
+	return &svc{twtCli}
 }
 func (s *svc) DirectMessagesEventProcessor(event twitter.DirectMessageEvent) error {
 	senderID := event.Message.SenderID
@@ -36,26 +40,26 @@ func (s *svc) DirectMessagesEventProcessor(event twitter.DirectMessageEvent) err
 	}
 	switch event.Message.Data.Text {
 	case "/start":
-		convos.Lock()
-		users := convos.Users
+		Convos.Lock()
+		users := Convos.Users
 		curUser, found := users[senderID]
 		if found {
 			tarUser, foundTar := users[curUser.TargetTwittID]
 			if foundTar {
 				if curUser.TargetTwittID == tarUser.TwittID && tarUser.TargetTwittID == curUser.TwittID && tarUser.Status == models.InConvo {
-					convos.Unlock()
+					Convos.Unlock()
 					return nil
 				}
 			}
 		}
-		convos.Unlock()
+		Convos.Unlock()
 
 		s.sendDirectMessage(senderID, &twitter.DirectMessageData{
 			Text: "[🤖] Searching stranger...",
 		})
 		for {
-			convos.Lock()
-			users := convos.Users
+			Convos.Lock()
+			users := Convos.Users
 			curUser := users[senderID]
 			//if curUser.Status != models.InConvo {
 			curUser.Status = models.Ready
@@ -68,14 +72,14 @@ func (s *svc) DirectMessagesEventProcessor(event twitter.DirectMessageEvent) err
 				}
 			}
 			users[senderID] = curUser
-			convos.Users = users
+			Convos.Users = users
 
 			if curUser.TargetTwittID == targetTwittID && users[targetTwittID].TargetTwittID == senderID {
-				convos.Unlock()
+				Convos.Unlock()
 				break
 			}
 			//}
-			convos.Unlock()
+			Convos.Unlock()
 		}
 		s.sendDirectMessage(senderID, &twitter.DirectMessageData{
 			Text: "[🤖] Settled and ready to chat!",
@@ -83,7 +87,7 @@ func (s *svc) DirectMessagesEventProcessor(event twitter.DirectMessageEvent) err
 				Label:       "Hi!",
 				Description: "Say hello for stranger!",
 				Metadata:    "external_id_2",
-			}).StopButton().GetQuickReply(),
+			}).StopButton().Build(),
 		})
 
 	case "/stop":
@@ -96,10 +100,10 @@ func (s *svc) DirectMessagesEventProcessor(event twitter.DirectMessageEvent) err
 }
 
 func (s *svc) routingDirectMessage(event twitter.DirectMessageEvent, senderID string) {
-	convos.Lock()
-	defer convos.Unlock()
+	Convos.Lock()
+	defer Convos.Unlock()
 	text := event.Message.Data.Text
-	users := convos.Users
+	users := Convos.Users
 	curUser := users[senderID]
 	if senderID == SelfTwitterID {
 		return
@@ -107,20 +111,20 @@ func (s *svc) routingDirectMessage(event twitter.DirectMessageEvent, senderID st
 	if curUser.Status == models.InConvo {
 		s.sendDirectMessage(curUser.TargetTwittID, &twitter.DirectMessageData{
 			Text:       text,
-			QuickReply: NewQRBuilder().StopButton().GetQuickReply(),
+			QuickReply: NewQRBuilder().StopButton().Build(),
 		})
 	} else {
 		s.sendDirectMessage(senderID, &twitter.DirectMessageData{
 			Text:       "[🤖] You can use this bot by typing /start to start convo with stranger",
-			QuickReply: NewQRBuilder().StartButton().GetQuickReply(),
+			QuickReply: NewQRBuilder().StartButton().Build(),
 		})
 	}
 }
 
 func (s *svc) stopProcess(senderID string) {
-	convos.Lock()
-	defer convos.Unlock()
-	users := convos.Users
+	Convos.Lock()
+	defer Convos.Unlock()
+	users := Convos.Users
 	curUser := users[senderID]
 	tarUser := users[curUser.TargetTwittID]
 
@@ -133,15 +137,15 @@ func (s *svc) stopProcess(senderID string) {
 	users[senderID] = curUser
 	users[tarUser.TwittID] = tarUser
 
-	convos.Users = users
+	Convos.Users = users
 
 	s.sendDirectMessage(tarUser.TwittID, &twitter.DirectMessageData{
 		Text:       "[🤖] Your Partner stopped the convo",
-		QuickReply: NewQRBuilder().StartButton().GetQuickReply(),
+		QuickReply: NewQRBuilder().StartButton().Build(),
 	})
 	s.sendDirectMessage(curUser.TwittID, &twitter.DirectMessageData{
 		Text:       "[🤖] Convo stopped",
-		QuickReply: NewQRBuilder().StartButton().GetQuickReply(),
+		QuickReply: NewQRBuilder().StartButton().Build(),
 	})
 }
 
@@ -150,23 +154,23 @@ func (s *svc) SendWelcomeMessage(event models.FollowEvent) error {
 		user := event.Target
 		log.Infof("Welcome Message triggered")
 
-		users := convos.Users
+		users := Convos.Users
 		if _, found := users[user.ID]; !found {
 			func() {
-				convos.Lock()
-				defer convos.Unlock()
+				Convos.Lock()
+				defer Convos.Unlock()
 				users[user.ID] = models.UserConvo{
 					TwittID:  user.ID,
 					Name:     user.Name,
 					Username: user.ScreenName,
 					Status:   models.End,
 				}
-				convos.Users = users
+				Convos.Users = users
 			}()
 		}
 		s.sendDirectMessage(user.ID, &twitter.DirectMessageData{
 			Text:       welcomeMessage(user.Name),
-			QuickReply: NewQRBuilder().StartButton().GetQuickReply(),
+			QuickReply: NewQRBuilder().StartButton().Build(),
 		})
 	}
 
@@ -174,7 +178,7 @@ func (s *svc) SendWelcomeMessage(event models.FollowEvent) error {
 }
 
 func (s *svc) sendDirectMessage(targetID string, directMessageData *twitter.DirectMessageData) {
-	s.client.TwtCliV1.DirectMessages.EventsNew(&twitter.DirectMessageEventsNewParams{
+	s.EventsNew(&twitter.DirectMessageEventsNewParams{
 		Event: &twitter.DirectMessageEvent{
 			Type: "message_create",
 			Message: &twitter.DirectMessageEventMessage{

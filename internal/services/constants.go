@@ -2,5 +2,5 @@ package services
 
 var (
 	Follow        = "follow"
-	SelfTwitterID = "1215181869567725568"
+	SelfTwitterID = "1566612593162088448"
 )

@@ -32,7 +32,7 @@ func (qr *QuickReplyBuilder) StopButton() *QuickReplyBuilder {
 	return qr
 }
 
-func (qr *QuickReplyBuilder) GetQuickReply() *twitter.DirectMessageQuickReply {
+func (qr *QuickReplyBuilder) Build() *twitter.DirectMessageQuickReply {
 	return &twitter.DirectMessageQuickReply{
 		Type:    "options",
 		Options: qr.options,

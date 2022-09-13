@@ -18,7 +18,7 @@ func main() {
 
 	r := gin.Default()
 	r.Use(config.Logger())
-	svc := services.NewService(conn)
+	svc := services.NewService(conn.TwtCliV1.DirectMessages)
 	api.Router(r, svc)
 
 	r.Run(":3000")
