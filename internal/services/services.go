@@ -40,56 +40,10 @@ func (s *svc) DirectMessagesEventProcessor(event twitter.DirectMessageEvent) err
 	}
 	switch event.Message.Data.Text {
 	case "/start":
-		Convos.Lock()
-		users := Convos.Users
-		curUser, found := users[senderID]
-		if found {
-			tarUser, foundTar := users[curUser.TargetTwittID]
-			if foundTar {
-				if curUser.TargetTwittID == tarUser.TwittID && tarUser.TargetTwittID == curUser.TwittID && tarUser.Status == models.InConvo {
-					Convos.Unlock()
-					return nil
-				}
-			}
+		err, done := s.startPairing(senderID)
+		if done {
+			return err
 		}
-		Convos.Unlock()
-
-		s.sendDirectMessage(senderID, &twitter.DirectMessageData{
-			Text: "[🤖] Searching stranger...",
-		})
-		for {
-			Convos.Lock()
-			users := Convos.Users
-			curUser := users[senderID]
-			//if curUser.Status != models.InConvo {
-			curUser.Status = models.Ready
-			targetTwittID := ""
-			for targetID, user := range users {
-				if user.TwittID != senderID && (user.Status == models.Ready || (user.Status == models.InConvo && user.TargetTwittID == senderID)) && curUser.Status == models.Ready {
-					curUser.Status = models.InConvo
-					curUser.TargetTwittID = user.TwittID
-					targetTwittID = targetID
-				}
-			}
-			users[senderID] = curUser
-			Convos.Users = users
-
-			if curUser.TargetTwittID == targetTwittID && users[targetTwittID].TargetTwittID == senderID {
-				Convos.Unlock()
-				break
-			}
-			//}
-			Convos.Unlock()
-		}
-		s.sendDirectMessage(senderID, &twitter.DirectMessageData{
-			Text: "[🤖] Settled and ready to chat!",
-			QuickReply: NewQRBuilder().CustomQuickRepy(twitter.DirectMessageQuickReplyOption{
-				Label:       "Hi!",
-				Description: "Say hello for stranger!",
-				Metadata:    "external_id_2",
-			}).StopButton().Build(),
-		})
-
 	case "/stop":
 		s.stopProcess(senderID)
 	default:
@@ -97,6 +51,61 @@ func (s *svc) DirectMessagesEventProcessor(event twitter.DirectMessageEvent) err
 	}
 
 	return nil
+}
+
+func (s *svc) startPairing(senderID string) (error, bool) {
+	Convos.Lock()
+	users := Convos.Users
+	curUser, found := users[senderID]
+	if found {
+		tarUser, foundTar := users[curUser.TargetTwittID]
+		if foundTar {
+			if curUser.TargetTwittID == tarUser.TwittID && tarUser.TargetTwittID == curUser.TwittID && tarUser.Status == models.InConvo {
+				Convos.Unlock()
+				return nil, true
+			}
+		}
+	}
+	Convos.Unlock()
+
+	s.sendDirectMessage(senderID, &twitter.DirectMessageData{
+		Text: "[🤖] Searching stranger...",
+	})
+	s.pairingProcess(senderID)
+	s.sendDirectMessage(senderID, &twitter.DirectMessageData{
+		Text: "[🤖] Settled and ready to chat!",
+		QuickReply: NewQRBuilder().CustomQuickRepy(twitter.DirectMessageQuickReplyOption{
+			Label:       "Hi!",
+			Description: "Say hello for stranger!",
+			Metadata:    "external_id_2",
+		}).StopButton().Build(),
+	})
+	return nil, false
+}
+
+func (s *svc) pairingProcess(senderID string) {
+	for {
+		Convos.Lock()
+		users := Convos.Users
+		curUser := users[senderID]
+		curUser.Status = models.Ready
+		targetTwittID := ""
+		for targetID, user := range users {
+			if user.TwittID != senderID && (user.Status == models.Ready || (user.Status == models.InConvo && user.TargetTwittID == senderID)) && curUser.Status == models.Ready {
+				curUser.Status = models.InConvo
+				curUser.TargetTwittID = user.TwittID
+				targetTwittID = targetID
+			}
+		}
+		users[senderID] = curUser
+		Convos.Users = users
+
+		if curUser.TargetTwittID == targetTwittID && users[targetTwittID].TargetTwittID == senderID {
+			Convos.Unlock()
+			break
+		}
+		Convos.Unlock()
+	}
 }
 
 func (s *svc) routingDirectMessage(event twitter.DirectMessageEvent, senderID string) {
