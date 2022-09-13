@@ -1,7 +1,6 @@
 package test
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -10,6 +9,7 @@ import (
 	"github.com/adibaulia/anon-twt/internal/models"
 	"github.com/adibaulia/anon-twt/internal/services"
 	"github.com/dghubble/go-twitter/twitter"
+	"github.com/go-playground/assert/v2"
 )
 
 type (
@@ -95,7 +95,13 @@ func TestAll(t *testing.T) {
 	}
 
 	wg.Wait()
-	oke := services.Convos
-	fmt.Printf("%v", oke)
-
+	users := services.Convos.Users
+	for key := range users {
+		user := users[key]
+		if user.Timeout {
+			continue
+		}
+		assert.Equal(t, user.TargetTwittID, users[user.TargetTwittID].TwittID)
+		assert.Equal(t, user.TwittID, users[user.TargetTwittID].TargetTwittID)
+	}
 }
