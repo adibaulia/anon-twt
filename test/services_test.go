@@ -1,6 +1,7 @@
 package test
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"sync"
@@ -9,11 +10,13 @@ import (
 	"github.com/adibaulia/anon-twt/internal/models"
 	"github.com/adibaulia/anon-twt/internal/services"
 	"github.com/dghubble/go-twitter/twitter"
+	twitterV2 "github.com/g8rswimmer/go-twitter/v2"
 	"github.com/go-playground/assert/v2"
 )
 
 type (
-	MockTwtCli struct{}
+	MockTwtCliV1 struct{}
+	MockTwtCliV2 struct{}
 )
 
 var (
@@ -21,9 +24,13 @@ var (
 	followEvent        = `{"for_user_id":"1566612593162088448","follow_events":[{"type":"follow","created_timestamp":"1663039656087","target":{"id":"oke","default_profile_image":false,"profile_background_image_url":"","friends_count":331,"favourites_count":2588,"profile_link_color":-1,"profile_background_image_url_https":"","utc_offset":0,"screen_name":"syncting","is_translator":false,"followers_count":205,"name":"Loid Forger","lang":"","profile_use_background_image":false,"created_at":"Tue Oct 26 14:08:38 +0000 2021","profile_text_color":-1,"notifications":false,"protected":false,"statuses_count":8035,"url":"","contributors_enabled":false,"default_profile":true,"profile_sidebar_border_color":-1,"time_zone":"","geo_enabled":false,"verified":false,"profile_image_url":"http://pbs.twimg.com/profile_images/1561015056069902336/lYej0rCo_normal.jpg","following":false,"profile_image_url_https":"https://pbs.twimg.com/profile_images/1561015056069902336/lYej0rCo_normal.jpg","profile_background_tile":false,"listed_count":0,"profile_sidebar_fill_color":-1,"location":"","follow_request_sent":false,"description":"INFJ | software engineer","profile_background_color":-1}},{"type":"follow","created_timestamp":"1663039656087","target":{"id":"mantap","default_profile_image":false,"profile_background_image_url":"","friends_count":331,"favourites_count":2588,"profile_link_color":-1,"profile_background_image_url_https":"","utc_offset":0,"screen_name":"syncting","is_translator":false,"followers_count":205,"name":"Loid Forger","lang":"","profile_use_background_image":false,"created_at":"Tue Oct 26 14:08:38 +0000 2021","profile_text_color":-1,"notifications":false,"protected":false,"statuses_count":8035,"url":"","contributors_enabled":false,"default_profile":true,"profile_sidebar_border_color":-1,"time_zone":"","geo_enabled":false,"verified":false,"profile_image_url":"http://pbs.twimg.com/profile_images/1561015056069902336/lYej0rCo_normal.jpg","following":false,"profile_image_url_https":"https://pbs.twimg.com/profile_images/1561015056069902336/lYej0rCo_normal.jpg","profile_background_tile":false,"listed_count":0,"profile_sidebar_fill_color":-1,"location":"","follow_request_sent":false,"description":"INFJ | software engineer","profile_background_color":-1}}]}`
 )
 
-func (m *MockTwtCli) EventsNew(params *twitter.DirectMessageEventsNewParams) (*twitter.DirectMessageEvent, *http.Response, error) {
+func (m *MockTwtCliV1) EventsNew(params *twitter.DirectMessageEventsNewParams) (*twitter.DirectMessageEvent, *http.Response, error) {
 	log.Printf("Sended DM to twittID: %v, with value: %v", params.Event.Message.Target, params.Event.Message.Data)
 	return nil, nil, nil
+}
+
+func (m *MockTwtCliV2) UserLookup(ctx context.Context, ids []string, opts twitterV2.UserLookupOpts) (*twitterV2.UserLookupResponse, error) {
+	return nil, nil
 }
 
 func TestAll(t *testing.T) {
@@ -49,7 +56,7 @@ func TestAll(t *testing.T) {
 		},
 	}
 
-	svc := services.NewService(&MockTwtCli{})
+	svc := services.NewService(&MockTwtCliV1{}, &MockTwtCliV2{})
 
 	for _, v := range followEvents {
 		svc.SendWelcomeMessage(v)

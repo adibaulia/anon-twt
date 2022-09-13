@@ -8,12 +8,14 @@ import (
 
 	"github.com/adibaulia/anon-twt/internal/models"
 	"github.com/dghubble/go-twitter/twitter"
+	twitterV2 "github.com/g8rswimmer/go-twitter/v2"
 	log "github.com/sirupsen/logrus"
 )
 
 type (
 	svc struct {
-		TwtCli
+		TwtCliV1
+		TwtCliV2
 	}
 
 	Serve interface {
@@ -21,18 +23,21 @@ type (
 		DirectMessagesEventProcessor(twitter.DirectMessageEvent) error
 	}
 
-	TwtCli interface {
+	TwtCliV1 interface {
 		EventsNew(params *twitter.DirectMessageEventsNewParams) (*twitter.DirectMessageEvent, *http.Response, error)
+	}
+	TwtCliV2 interface {
+		UserLookup(ctx context.Context, ids []string, opts twitterV2.UserLookupOpts) (*twitterV2.UserLookupResponse, error)
 	}
 )
 
 var Convos *models.UsersConvo
 
-func NewService(twtCli TwtCli) *svc {
+func NewService(twtCli TwtCliV1, v2 TwtCliV2) *svc {
 	Convos = &models.UsersConvo{
 		Users: map[string]models.UserConvo{},
 	}
-	return &svc{twtCli}
+	return &svc{twtCli, v2}
 }
 func (s *svc) DirectMessagesEventProcessor(event twitter.DirectMessageEvent) error {
 	senderID := event.Message.SenderID
@@ -56,10 +61,12 @@ func (s *svc) DirectMessagesEventProcessor(event twitter.DirectMessageEvent) err
 }
 
 func (s *svc) startPairing(senderID string) (error, bool) {
-	Convos.Lock()
+	// Convos.Lock()
+	// defer Convos.Unlock()
 	users := Convos.Users
 	curUser, found := users[senderID]
 	if found {
+		Convos.Lock()
 		tarUser, foundTar := users[curUser.TargetTwittID]
 		if foundTar {
 			if curUser.TargetTwittID == tarUser.TwittID && tarUser.TargetTwittID == curUser.TwittID && tarUser.Status == models.InConvo {
@@ -67,8 +74,26 @@ func (s *svc) startPairing(senderID string) (error, bool) {
 				return nil, true
 			}
 		}
+		Convos.Unlock()
+	} else {
+		func() {
+			userResp, err := s.UserLookup(context.Background(), []string{senderID}, twitterV2.UserLookupOpts{})
+			if err != nil {
+				log.Printf("user lookup error: %v", err)
+			}
+			dict := userResp.Raw.UserDictionaries()
+			u := dict[senderID]
+			Convos.Lock()
+			defer Convos.Unlock()
+			users[senderID] = models.UserConvo{
+				TwittID:  u.User.ID,
+				Name:     u.User.Name,
+				Username: u.User.UserName,
+				Status:   models.End,
+			}
+			Convos.Users = users
+		}()
 	}
-	Convos.Unlock()
 
 	s.sendDirectMessage(senderID, &twitter.DirectMessageData{
 		Text: "[🤖] Searching stranger...",
@@ -195,21 +220,6 @@ func (s *svc) SendWelcomeMessage(event models.FollowEvent) error {
 	if event.Type == Follow {
 		user := event.Target
 		log.Infof("Welcome Message triggered")
-
-		users := Convos.Users
-		if _, found := users[user.ID]; !found {
-			func() {
-				Convos.Lock()
-				defer Convos.Unlock()
-				users[user.ID] = models.UserConvo{
-					TwittID:  user.ID,
-					Name:     user.Name,
-					Username: user.ScreenName,
-					Status:   models.End,
-				}
-				Convos.Users = users
-			}()
-		}
 		s.sendDirectMessage(user.ID, &twitter.DirectMessageData{
 			Text:       welcomeMessage(user.Name),
 			QuickReply: NewQRBuilder().StartButton().Build(),
