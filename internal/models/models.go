@@ -17,6 +17,7 @@ type (
 		Username      string
 		Name          string
 		Status        Status
+		Timeout       bool
 		TargetTwittID string
 	}
 

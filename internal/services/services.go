@@ -1,8 +1,10 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/adibaulia/anon-twt/internal/models"
 	"github.com/dghubble/go-twitter/twitter"
@@ -71,24 +73,54 @@ func (s *svc) startPairing(senderID string) (error, bool) {
 	s.sendDirectMessage(senderID, &twitter.DirectMessageData{
 		Text: "[🤖] Searching stranger...",
 	})
-	s.pairingProcess(senderID)
-	s.sendDirectMessage(senderID, &twitter.DirectMessageData{
-		Text: "[🤖] Settled and ready to chat!",
-		QuickReply: NewQRBuilder().CustomQuickRepy(twitter.DirectMessageQuickReplyOption{
-			Label:       "Hi!",
-			Description: "Say hello for stranger!",
-			Metadata:    "external_id_2",
-		}).StopButton().Build(),
-	})
+	done := make(chan bool)
+	go s.pairingProcess(senderID, done)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	select {
+	case <-done:
+		Convos.Lock()
+		users := Convos.Users
+		curUser := users[senderID]
+		Convos.Unlock()
+		log.Print("pairing success user: %v", curUser.TwittID)
+		s.sendDirectMessage(senderID, &twitter.DirectMessageData{
+			Text: "[🤖] Settled and ready to chat!",
+			QuickReply: NewQRBuilder().CustomQuickRepy(twitter.DirectMessageQuickReplyOption{
+				Label:       "Hi!",
+				Description: "Say hello for stranger!",
+				Metadata:    "external_id_2",
+			}).StopButton().Build(),
+		})
+	case <-ctx.Done():
+		Convos.Lock()
+		defer Convos.Unlock()
+		users := Convos.Users
+		curUser := users[senderID]
+		curUser.Status = models.End
+		curUser.TargetTwittID = ""
+		curUser.Timeout = true
+
+		users[senderID] = curUser
+		Convos.Users = users
+		log.Print("timeout user: %v", curUser.TwittID)
+		s.sendDirectMessage(senderID, &twitter.DirectMessageData{
+			Text:       "[🤖] Can't find stranger but you can start search again!",
+			QuickReply: NewQRBuilder().StartButton().Build(),
+		})
+	}
+
 	return nil, false
 }
 
-func (s *svc) pairingProcess(senderID string) {
+func (s *svc) pairingProcess(senderID string, done chan bool) {
 	for {
 		Convos.Lock()
 		users := Convos.Users
 		curUser := users[senderID]
-		curUser.Status = models.Ready
+		if !curUser.Timeout {
+			curUser.Status = models.Ready
+		}
 		targetTwittID := ""
 		for targetID, user := range users {
 			if user.TwittID != senderID && (user.Status == models.Ready || (user.Status == models.InConvo && user.TargetTwittID == senderID)) && curUser.Status == models.Ready {
@@ -102,6 +134,7 @@ func (s *svc) pairingProcess(senderID string) {
 
 		if curUser.TargetTwittID == targetTwittID && users[targetTwittID].TargetTwittID == senderID {
 			Convos.Unlock()
+			done <- true
 			break
 		}
 		Convos.Unlock()

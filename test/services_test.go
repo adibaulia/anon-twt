@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/adibaulia/anon-twt/internal/models"
 	"github.com/adibaulia/anon-twt/internal/services"
@@ -48,12 +47,6 @@ func TestAll(t *testing.T) {
 				ID: "banget",
 			},
 		},
-		{
-			Type: "follow",
-			Target: models.Target{
-				ID: "sip",
-			},
-		},
 	}
 
 	svc := services.NewService(&MockTwtCli{})
@@ -61,8 +54,6 @@ func TestAll(t *testing.T) {
 	for _, v := range followEvents {
 		svc.SendWelcomeMessage(v)
 	}
-
-	time.Sleep(1 * time.Second)
 
 	DMEvents := []twitter.DirectMessageEvent{
 		{
@@ -84,14 +75,6 @@ func TestAll(t *testing.T) {
 		{
 			Message: &twitter.DirectMessageEventMessage{
 				SenderID: "banget",
-				Data: &twitter.DirectMessageData{
-					Text: "/start",
-				},
-			},
-		},
-		{
-			Message: &twitter.DirectMessageEventMessage{
-				SenderID: "sip",
 				Data: &twitter.DirectMessageData{
 					Text: "/start",
 				},
