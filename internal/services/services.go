@@ -36,13 +36,28 @@ func (s *svc) DirectMessagesEventProcessor(event twitter.DirectMessageEvent) err
 	}
 	switch event.Message.Data.Text {
 	case "/start":
+		convos.Lock()
+		users := convos.Users
+		curUser, found := users[senderID]
+		if found {
+			tarUser, foundTar := users[curUser.TargetTwittID]
+			if foundTar {
+				if curUser.TargetTwittID == tarUser.TwittID && tarUser.TargetTwittID == curUser.TwittID && tarUser.Status == models.InConvo {
+					convos.Unlock()
+					return nil
+				}
+			}
+		}
+		convos.Unlock()
+
 		s.sendDirectMessage(senderID, &twitter.DirectMessageData{
-			Text: "Searching...",
+			Text: "[🤖] Searching stranger...",
 		})
 		for {
 			convos.Lock()
 			users := convos.Users
 			curUser := users[senderID]
+			//if curUser.Status != models.InConvo {
 			curUser.Status = models.Ready
 			targetTwittID := ""
 			for targetID, user := range users {
@@ -59,26 +74,75 @@ func (s *svc) DirectMessagesEventProcessor(event twitter.DirectMessageEvent) err
 				convos.Unlock()
 				break
 			}
+			//}
 			convos.Unlock()
 		}
 		s.sendDirectMessage(senderID, &twitter.DirectMessageData{
-			Text: "Settled and ready to chat!",
+			Text: "[🤖] Settled and ready to chat!",
+			QuickReply: NewQRBuilder().CustomQuickRepy(twitter.DirectMessageQuickReplyOption{
+				Label:       "Hi!",
+				Description: "Say hello for stranger!",
+				Metadata:    "external_id_2",
+			}).StopButton().GetQuickReply(),
 		})
 
+	case "/stop":
+		s.stopProcess(senderID)
 	default:
-		text := event.Message.Data.Text
-		convos.Lock()
-		users := convos.Users
-		curUser := users[senderID]
-		if curUser.Status == models.InConvo {
-			s.sendDirectMessage(curUser.TargetTwittID, &twitter.DirectMessageData{
-				Text: text,
-			})
-		}
-		convos.Unlock()
+		s.routingDirectMessage(event, senderID)
 	}
 
 	return nil
+}
+
+func (s *svc) routingDirectMessage(event twitter.DirectMessageEvent, senderID string) {
+	convos.Lock()
+	defer convos.Unlock()
+	text := event.Message.Data.Text
+	users := convos.Users
+	curUser := users[senderID]
+	if senderID == SelfTwitterID {
+		return
+	}
+	if curUser.Status == models.InConvo {
+		s.sendDirectMessage(curUser.TargetTwittID, &twitter.DirectMessageData{
+			Text:       text,
+			QuickReply: NewQRBuilder().StopButton().GetQuickReply(),
+		})
+	} else {
+		s.sendDirectMessage(senderID, &twitter.DirectMessageData{
+			Text:       "[🤖] You can use this bot by typing /start to start convo with stranger",
+			QuickReply: NewQRBuilder().StartButton().GetQuickReply(),
+		})
+	}
+}
+
+func (s *svc) stopProcess(senderID string) {
+	convos.Lock()
+	defer convos.Unlock()
+	users := convos.Users
+	curUser := users[senderID]
+	tarUser := users[curUser.TargetTwittID]
+
+	curUser.Status = models.End
+	tarUser.Status = models.End
+
+	curUser.TargetTwittID = ""
+	tarUser.TargetTwittID = ""
+
+	users[senderID] = curUser
+	users[tarUser.TwittID] = tarUser
+
+	convos.Users = users
+
+	s.sendDirectMessage(tarUser.TwittID, &twitter.DirectMessageData{
+		Text:       "[🤖] Your Partner stopped the convo",
+		QuickReply: NewQRBuilder().StartButton().GetQuickReply(),
+	})
+	s.sendDirectMessage(curUser.TwittID, &twitter.DirectMessageData{
+		Text:       "[🤖] Convo stopped",
+		QuickReply: NewQRBuilder().StartButton().GetQuickReply(),
+	})
 }
 
 func (s *svc) SendWelcomeMessage(event models.FollowEvent) error {
@@ -101,8 +165,8 @@ func (s *svc) SendWelcomeMessage(event models.FollowEvent) error {
 			}()
 		}
 		s.sendDirectMessage(user.ID, &twitter.DirectMessageData{
-			Text:       wellcomeMessage(user.Name),
-			QuickReply: defaultQuickReply(),
+			Text:       welcomeMessage(user.Name),
+			QuickReply: NewQRBuilder().StartButton().GetQuickReply(),
 		})
 	}
 
@@ -123,20 +187,10 @@ func (s *svc) sendDirectMessage(targetID string, directMessageData *twitter.Dire
 	})
 }
 
-func defaultQuickReply() *twitter.DirectMessageQuickReply {
-	return &twitter.DirectMessageQuickReply{
-		Type: "options",
-		Options: []twitter.DirectMessageQuickReplyOption{{
-			Label:       "/start",
-			Description: "Start convo 🚀🚀🚀",
-			Metadata:    "external_id_1",
-		}},
-	}
-}
-
-func wellcomeMessage(name string) string {
+func welcomeMessage(name string) string {
 	return fmt.Sprintf(
-		`Hello %v!
+		`[🤖][🤖][🤖]
+		Hello %v!
 		You have been followed!
 		Now you can use our app to have one on one convo with other stranger!
 		Type /start to start convo with others!`, name)
