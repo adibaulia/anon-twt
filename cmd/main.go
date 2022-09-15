@@ -7,16 +7,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type (
-	tweetReq struct {
-		Tweet string `json:"tweet"`
-	}
-)
-
 func main() {
 	conn := config.GetInstance()
 
-	r := gin.Default()
+	r := gin.New()
 	r.Use(config.Logger())
 	svc := services.NewService(conn.TwtCliV1.DirectMessages, conn.TwtCliV2)
 	api.Router(r, svc)

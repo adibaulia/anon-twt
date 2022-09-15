@@ -15,6 +15,14 @@ func (qr *QuickReplyBuilder) CustomQuickRepy(qrs ...twitter.DirectMessageQuickRe
 	return qr
 }
 
+func (qr *QuickReplyBuilder) RegisterButton() *QuickReplyBuilder {
+	qr.options = append(qr.options, twitter.DirectMessageQuickReplyOption{
+		Label:       "/register",
+		Description: "Register value from you!",
+		Metadata:    "external_id_1",
+	})
+	return qr
+}
 func (qr *QuickReplyBuilder) StartButton() *QuickReplyBuilder {
 	qr.options = append(qr.options, twitter.DirectMessageQuickReplyOption{
 		Label:       "/start",

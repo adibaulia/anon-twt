@@ -13,7 +13,7 @@ import (
 )
 
 type (
-	svc struct {
+	Svc struct {
 		TwtCliV1
 		TwtCliV2
 	}
@@ -33,112 +33,181 @@ type (
 
 var Convos *models.UsersConvo
 
-func NewService(twtCli TwtCliV1, v2 TwtCliV2) *svc {
+func NewService(twtCli TwtCliV1, v2 TwtCliV2) *Svc {
 	Convos = &models.UsersConvo{
 		Users: map[string]models.UserConvo{},
 	}
-	return &svc{twtCli, v2}
+	return &Svc{twtCli, v2}
 }
-func (s *svc) DirectMessagesEventProcessor(event twitter.DirectMessageEvent) error {
+
+func (s *Svc) SendWelcomeMessage(event models.FollowEvent) error {
+	if event.Type == Follow {
+		user := event.Target
+		log.Infof("Welcome Message triggered")
+		s.sendDirectMessage(user.ID, &twitter.DirectMessageData{
+			Text:       welcomeMessage(user.Name),
+			QuickReply: NewQRBuilder().RegisterButton().Build(),
+		})
+	}
+
+	return nil
+}
+
+func (s *Svc) DirectMessagesEventProcessor(event twitter.DirectMessageEvent) error {
 	senderID := event.Message.SenderID
 
 	if senderID == SelfTwitterID {
 		return nil
 	}
-	switch event.Message.Data.Text {
+	incomingMessage := event.Message.Data.Text
+	switch incomingMessage {
+	case "/register":
+		s.createNewUser(senderID)
 	case "/start":
-		err, done := s.startPairing(senderID)
-		if done {
-			return err
+		err := s.startPairing(senderID)
+		if err != nil {
+			s.sendDirectMessage(senderID, &twitter.DirectMessageData{
+				Text:       "[🤖] Make sure you have register first!",
+				QuickReply: NewQRBuilder().RegisterButton().Build(),
+			})
+			return nil
 		}
 	case "/stop":
 		s.stopProcess(senderID)
 	default:
+		//commands := []string{"/register", "start", "/stop"}
+		//for _, command := range commands {
+		//	if incomingMessage == command {
+		//		s.sendDirectMessage(senderID, &twitter.DirectMessageData{
+		//			Text: "[🤖] Searching stranger...",
+		//		})
+		//		return nil
+		//	}
+		//}
 		s.routingDirectMessage(event, senderID)
 	}
 
 	return nil
 }
 
-func (s *svc) startPairing(senderID string) (error, bool) {
-	// Convos.Lock()
-	// defer Convos.Unlock()
+func (s *Svc) startPairing(senderID string) error {
 	users := Convos.Users
 	curUser, found := users[senderID]
 	if found {
 		Convos.Lock()
 		tarUser, foundTar := users[curUser.TargetTwittID]
 		if foundTar {
-			if curUser.TargetTwittID == tarUser.TwittID && tarUser.TargetTwittID == curUser.TwittID && tarUser.Status == models.InConvo {
+			if s.isInvalidUser(curUser, tarUser) {
 				Convos.Unlock()
-				return nil, true
+				return fmt.Errorf("invalid user")
 			}
 		}
 		Convos.Unlock()
 	} else {
-		func() {
-			userResp, err := s.UserLookup(context.Background(), []string{senderID}, twitterV2.UserLookupOpts{})
-			if err != nil {
-				log.Printf("user lookup error: %v", err)
-			}
-			dict := userResp.Raw.UserDictionaries()
-			u := dict[senderID]
-			Convos.Lock()
-			defer Convos.Unlock()
-			users[senderID] = models.UserConvo{
-				TwittID:  u.User.ID,
-				Name:     u.User.Name,
-				Username: u.User.UserName,
-				Status:   models.End,
-			}
-			Convos.Users = users
-		}()
+		return fmt.Errorf("invalid user")
 	}
 
 	s.sendDirectMessage(senderID, &twitter.DirectMessageData{
 		Text: "[🤖] Searching stranger...",
 	})
-	done := make(chan bool)
-	go s.pairingProcess(senderID, done)
+
+	successPair := make(chan bool)
+	go s.pairingProcess(senderID, successPair)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	select {
-	case <-done:
-		Convos.Lock()
-		users := Convos.Users
-		curUser := users[senderID]
-		Convos.Unlock()
-		log.Print("pairing success user: %v", curUser.TwittID)
-		s.sendDirectMessage(senderID, &twitter.DirectMessageData{
-			Text: "[🤖] Settled and ready to chat!",
-			QuickReply: NewQRBuilder().CustomQuickRepy(twitter.DirectMessageQuickReplyOption{
-				Label:       "Hi!",
-				Description: "Say hello for stranger!",
-				Metadata:    "external_id_2",
-			}).StopButton().Build(),
-		})
-	case <-ctx.Done():
-		Convos.Lock()
-		defer Convos.Unlock()
-		users := Convos.Users
-		curUser := users[senderID]
-		curUser.Status = models.End
-		curUser.TargetTwittID = ""
-		curUser.Timeout = true
 
-		users[senderID] = curUser
-		Convos.Users = users
-		log.Print("timeout user: %v", curUser.TwittID)
-		s.sendDirectMessage(senderID, &twitter.DirectMessageData{
-			Text:       "[🤖] Can't find stranger but you can start search again!",
-			QuickReply: NewQRBuilder().StartButton().Build(),
-		})
+	select {
+	case <-successPair:
+		s.successPairing(senderID)
+	case <-ctx.Done():
+		s.timeoutPairing(senderID)
 	}
 
-	return nil, false
+	return nil
 }
 
-func (s *svc) pairingProcess(senderID string, done chan bool) {
+func (s *Svc) createNewUser(senderID string) {
+	Convos.Lock()
+	defer Convos.Unlock()
+	users := Convos.Users
+	_, found := users[senderID]
+	if found {
+		s.sendDirectMessage(senderID, &twitter.DirectMessageData{
+			Text: "[🤖] You Already registered!",
+		})
+		return
+	}
+
+	s.sendDirectMessage(senderID, &twitter.DirectMessageData{
+		Text: "[🤖] Registering some value from you",
+	})
+	user := users[senderID]
+	userResp, err := s.UserLookup(context.Background(), []string{senderID}, twitterV2.UserLookupOpts{})
+	if err != nil {
+		log.Printf("user lookup error: %v", err)
+	}
+	dict := userResp.Raw.UserDictionaries()
+	u, found := dict[senderID]
+	if found {
+		user = models.UserConvo{
+			Name:     u.User.Name,
+			Username: u.User.UserName,
+		}
+	}
+	user.TwittID = senderID
+	user.Status = models.End
+	users[senderID] = user
+	Convos.Users = users
+
+	s.sendDirectMessage(senderID, &twitter.DirectMessageData{
+		Text:       "[🤖] Registered! Now you can start searching convo!",
+		QuickReply: NewQRBuilder().StartButton().Build(),
+	})
+}
+
+func (s *Svc) timeoutPairing(senderID string) {
+	Convos.Lock()
+	defer Convos.Unlock()
+	users := Convos.Users
+	curUser := users[senderID]
+	curUser.Status = models.End
+	curUser.TargetTwittID = ""
+	curUser.Timeout = true
+	users[senderID] = curUser
+	Convos.Users = users
+
+	log.Print("timeout user: %v", curUser.TwittID)
+
+	s.sendDirectMessage(senderID, &twitter.DirectMessageData{
+		Text:       "[🤖] Can't find stranger but you can start search again!",
+		QuickReply: NewQRBuilder().StartButton().Build(),
+	})
+}
+
+func (s *Svc) successPairing(senderID string) {
+	Convos.Lock()
+	defer Convos.Unlock()
+	users := Convos.Users
+	curUser := users[senderID]
+
+	log.Print("pairing success user: %v", curUser.TwittID)
+
+	s.sendDirectMessage(senderID, &twitter.DirectMessageData{
+		Text: "[🤖] Settled and ready to chat!",
+		QuickReply: NewQRBuilder().CustomQuickRepy(twitter.DirectMessageQuickReplyOption{
+			Label:       "Hi!",
+			Description: "Say hello for stranger!",
+			Metadata:    "external_id_2",
+		}).StopButton().Build(),
+	})
+}
+
+func (s *Svc) isInvalidUser(curUser models.UserConvo, tarUser models.UserConvo) bool {
+	return curUser.TargetTwittID == tarUser.TwittID && tarUser.TargetTwittID == curUser.TwittID && tarUser.Status == models.InConvo
+}
+
+func (s *Svc) pairingProcess(senderID string, done chan bool) {
 	for {
 		Convos.Lock()
 		users := Convos.Users
@@ -148,7 +217,7 @@ func (s *svc) pairingProcess(senderID string, done chan bool) {
 		}
 		targetTwittID := ""
 		for targetID, user := range users {
-			if user.TwittID != senderID && (user.Status == models.Ready || (user.Status == models.InConvo && user.TargetTwittID == senderID)) && curUser.Status == models.Ready {
+			if s.isValidUserReadyToPair(senderID, user, curUser) {
 				curUser.Status = models.InConvo
 				curUser.TargetTwittID = user.TwittID
 				targetTwittID = targetID
@@ -166,15 +235,19 @@ func (s *svc) pairingProcess(senderID string, done chan bool) {
 	}
 }
 
-func (s *svc) routingDirectMessage(event twitter.DirectMessageEvent, senderID string) {
+func (s *Svc) isValidUserReadyToPair(senderID string, user models.UserConvo, curUser models.UserConvo) bool {
+	return user.TwittID != senderID && (user.Status == models.Ready || (user.Status == models.InConvo && user.TargetTwittID == senderID)) && curUser.Status == models.Ready
+}
+
+func (s *Svc) routingDirectMessage(event twitter.DirectMessageEvent, senderID string) {
+	if senderID == SelfTwitterID {
+		return
+	}
 	Convos.Lock()
 	defer Convos.Unlock()
 	text := event.Message.Data.Text
 	users := Convos.Users
 	curUser := users[senderID]
-	if senderID == SelfTwitterID {
-		return
-	}
 	if curUser.Status == models.InConvo {
 		s.sendDirectMessage(curUser.TargetTwittID, &twitter.DirectMessageData{
 			Text:       text,
@@ -188,12 +261,20 @@ func (s *svc) routingDirectMessage(event twitter.DirectMessageEvent, senderID st
 	}
 }
 
-func (s *svc) stopProcess(senderID string) {
+func (s *Svc) stopProcess(senderID string) {
 	Convos.Lock()
 	defer Convos.Unlock()
 	users := Convos.Users
 	curUser := users[senderID]
 	tarUser := users[curUser.TargetTwittID]
+
+	if curUser.Status != models.InConvo && tarUser.Status != models.InConvo {
+		s.sendDirectMessage(curUser.TwittID, &twitter.DirectMessageData{
+			Text:       "[🤖] Invalid command! You must register or start first for stopping convo",
+			QuickReply: NewQRBuilder().RegisterButton().StartButton().Build(),
+		})
+		return
+	}
 
 	curUser.Status = models.End
 	tarUser.Status = models.End
@@ -216,20 +297,7 @@ func (s *svc) stopProcess(senderID string) {
 	})
 }
 
-func (s *svc) SendWelcomeMessage(event models.FollowEvent) error {
-	if event.Type == Follow {
-		user := event.Target
-		log.Infof("Welcome Message triggered")
-		s.sendDirectMessage(user.ID, &twitter.DirectMessageData{
-			Text:       welcomeMessage(user.Name),
-			QuickReply: NewQRBuilder().StartButton().Build(),
-		})
-	}
-
-	return nil
-}
-
-func (s *svc) sendDirectMessage(targetID string, directMessageData *twitter.DirectMessageData) {
+func (s *Svc) sendDirectMessage(targetID string, directMessageData *twitter.DirectMessageData) {
 	s.EventsNew(&twitter.DirectMessageEventsNewParams{
 		Event: &twitter.DirectMessageEvent{
 			Type: "message_create",
@@ -249,5 +317,5 @@ func welcomeMessage(name string) string {
 		Hello %v!
 		You have been followed!
 		Now you can use our app to have one on one convo with other stranger!
-		Type /start to start convo with others!`, name)
+		Type /register to register you and /start convo!`, name)
 }

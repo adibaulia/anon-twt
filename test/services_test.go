@@ -30,7 +30,15 @@ func (m *MockTwtCliV1) EventsNew(params *twitter.DirectMessageEventsNewParams) (
 }
 
 func (m *MockTwtCliV2) UserLookup(ctx context.Context, ids []string, opts twitterV2.UserLookupOpts) (*twitterV2.UserLookupResponse, error) {
-	return nil, nil
+	usrobjet := twitterV2.UserObj{}
+	usrs := []*twitterV2.UserObj{}
+	usrs = append(usrs, &usrobjet)
+	mock := &twitterV2.UserLookupResponse{
+		Raw: &twitterV2.UserRaw{
+			Users: usrs,
+		},
+	}
+	return mock, nil
 }
 
 func TestAll(t *testing.T) {
@@ -62,7 +70,34 @@ func TestAll(t *testing.T) {
 		svc.SendWelcomeMessage(v)
 	}
 
-	DMEvents := []twitter.DirectMessageEvent{
+	DMEventRegister := []twitter.DirectMessageEvent{
+		{
+			Message: &twitter.DirectMessageEventMessage{
+				SenderID: "mantap",
+				Data: &twitter.DirectMessageData{
+					Text: "/register",
+				},
+			},
+		},
+		{
+			Message: &twitter.DirectMessageEventMessage{
+				SenderID: "oke",
+				Data: &twitter.DirectMessageData{
+					Text: "/register",
+				},
+			},
+		},
+		{
+			Message: &twitter.DirectMessageEventMessage{
+				SenderID: "banget",
+				Data: &twitter.DirectMessageData{
+					Text: "/register",
+				},
+			},
+		},
+	}
+	serviceWorker(DMEventRegister, svc)
+	DMEventStart := []twitter.DirectMessageEvent{
 		{
 			Message: &twitter.DirectMessageEventMessage{
 				SenderID: "mantap",
@@ -89,19 +124,7 @@ func TestAll(t *testing.T) {
 		},
 	}
 
-	wg := &sync.WaitGroup{}
-
-	for _, v := range DMEvents {
-		wg.Add(1)
-		v := v
-		go func() {
-			svc.DirectMessagesEventProcessor(v)
-			wg.Done()
-		}()
-
-	}
-
-	wg.Wait()
+	serviceWorker(DMEventStart, svc)
 	users := services.Convos.Users
 	for key := range users {
 		user := users[key]
@@ -111,4 +134,17 @@ func TestAll(t *testing.T) {
 		assert.Equal(t, user.TargetTwittID, users[user.TargetTwittID].TwittID)
 		assert.Equal(t, user.TwittID, users[user.TargetTwittID].TargetTwittID)
 	}
+}
+
+func serviceWorker(DMEventStart []twitter.DirectMessageEvent, svc *services.Svc) {
+	wg := &sync.WaitGroup{}
+	for _, v := range DMEventStart {
+		wg.Add(1)
+		v := v
+		go func() {
+			svc.DirectMessagesEventProcessor(v)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
 }
