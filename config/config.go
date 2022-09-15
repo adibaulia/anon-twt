@@ -1,8 +1,9 @@
 package config
 
 import (
-	"log"
 	"net/http"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/dghubble/go-twitter/twitter"
 	"github.com/dghubble/oauth1"
@@ -12,6 +13,7 @@ import (
 
 var (
 	instance *Connection
+	conf     *Configuration
 )
 
 type (
@@ -26,12 +28,15 @@ type (
 		BearerToken       string `mapstructure:"BearerToken"`
 		AccessToken       string `mapstructure:"AccessToken"`
 		AccessTokenSecret string `mapstructure:"AccessTokenSecret"`
+		LogLevel          string `mapstructure:"logLevel"`
+		LogPath           string `mapstructure:"logPath"`
 	}
 )
 
 func init() {
 
-	conf := GetConfigurationEnv()
+	conf = getConf()
+	initLog()
 	config := oauth1.NewConfig(conf.APIKey, conf.APIKeySecret)
 	token := oauth1.NewToken(conf.AccessToken, conf.AccessTokenSecret)
 	httpClient := config.Client(oauth1.NoContext, token)
@@ -42,7 +47,7 @@ func init() {
 	// 	ClientSecret: conf.APIKeySecret,
 	// 	TokenURL:     "https://api.twitter.com/oauth2/token",
 	// }
-	// // http.Client will automatically authorize Requests
+	// http.Client will automatically authorize Requests
 	// httpClient := config.Client(context.Background())
 
 	// Twitter clientApiV1
@@ -59,7 +64,7 @@ func init() {
 	}
 
 }
-func GetConfigurationEnv() *Configuration {
+func getConf() *Configuration {
 
 	viper.AddConfigPath(".")
 	viper.SetConfigName("keys")
@@ -86,4 +91,8 @@ func (a authorize) Add(req *http.Request) {}
 
 func GetInstance() *Connection {
 	return instance
+}
+
+func GetConf() *Configuration {
+	return conf
 }
