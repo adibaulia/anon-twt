@@ -75,15 +75,6 @@ func (s *Svc) DirectMessagesEventProcessor(event twitter.DirectMessageEvent) err
 	case "/stop":
 		s.stopProcess(senderID)
 	default:
-		//commands := []string{"/register", "start", "/stop"}
-		//for _, command := range commands {
-		//	if incomingMessage == command {
-		//		s.sendDirectMessage(senderID, &twitter.DirectMessageData{
-		//			Text: "[🤖] Searching stranger...",
-		//		})
-		//		return nil
-		//	}
-		//}
 		s.routingDirectMessage(event, senderID)
 	}
 
@@ -207,7 +198,7 @@ func (s *Svc) isInvalidUser(curUser models.UserConvo, tarUser models.UserConvo) 
 	return curUser.TargetTwittID == tarUser.TwittID && tarUser.TargetTwittID == curUser.TwittID && tarUser.Status == models.InConvo
 }
 
-func (s *Svc) pairingProcess(senderID string, done chan bool) {
+func (s *Svc) pairingProcess(senderID string, done chan<- bool) {
 	for {
 		Convos.Lock()
 		users := Convos.Users
