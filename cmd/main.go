@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/adibaulia/anon-twt/api"
 	"github.com/adibaulia/anon-twt/config"
 	"github.com/adibaulia/anon-twt/internal/services"
@@ -15,6 +18,6 @@ func main() {
 	svc := services.NewService(conn.TwtCliV1.DirectMessages, conn.TwtCliV2)
 	api.Router(r, svc)
 
-	r.Run(":3000")
+	r.Run(fmt.Sprintf(":%v", os.Getenv("PORT")))
 
 }
