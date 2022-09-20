@@ -3,6 +3,7 @@ package models
 import (
 	"sync"
 
+	"github.com/adibaulia/anon-twt/internal/models/status"
 	"github.com/dghubble/go-twitter/twitter"
 )
 
@@ -16,8 +17,7 @@ type (
 		TwittID       string
 		Username      string
 		Name          string
-		Status        Status
-		Timeout       bool
+		Status        status.Status
 		TargetTwittID string
 	}
 

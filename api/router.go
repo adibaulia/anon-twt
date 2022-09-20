@@ -32,13 +32,13 @@ func webhookEvent(c *gin.Context) {
 	events := &models.WebhookEvents{}
 	err := c.Bind(events)
 	if err != nil {
-		log.Errorf("ERROR", err)
+		log.Errorf("ERROR %v", err)
 		return
 	}
 
 	bodyByte, err := json.Marshal(events)
 	if err != nil {
-		log.Errorf("ERROR", err)
+		log.Errorf("ERROR %v", err)
 	}
 
 	log.Printf("Received Body from Webhooks: %v", string(bodyByte))

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/adibaulia/anon-twt/internal/models"
+	"github.com/adibaulia/anon-twt/internal/models/status"
 	"github.com/dghubble/go-twitter/twitter"
 	twitterV2 "github.com/g8rswimmer/go-twitter/v2"
 	log "github.com/sirupsen/logrus"
@@ -147,7 +148,7 @@ func (s *Svc) createNewUser(senderID string) {
 		}
 	}
 	user.TwittID = senderID
-	user.Status = models.End
+	user.Status = status.End
 	users[senderID] = user
 	Convos.Users = users
 
@@ -162,13 +163,13 @@ func (s *Svc) timeoutPairing(senderID string) {
 	defer Convos.Unlock()
 	users := Convos.Users
 	curUser := users[senderID]
-	curUser.Status = models.End
+
 	curUser.TargetTwittID = ""
-	curUser.Timeout = true
+	curUser.Status = status.Timeout
 	users[senderID] = curUser
 	Convos.Users = users
 
-	log.Print("timeout user: %v", curUser.TwittID)
+	log.Printf("timeout user: %v", curUser.TwittID)
 
 	s.sendDirectMessage(senderID, &twitter.DirectMessageData{
 		Text:       "[🤖] Can't find stranger but you can start search again!",
@@ -182,7 +183,7 @@ func (s *Svc) successPairing(senderID string) {
 	users := Convos.Users
 	curUser := users[senderID]
 
-	log.Print("pairing success user: %v", curUser.TwittID)
+	log.Printf("pairing success user: %v", curUser.TwittID)
 
 	s.sendDirectMessage(senderID, &twitter.DirectMessageData{
 		Text: "[🤖] Settled and ready to chat!",
@@ -195,7 +196,7 @@ func (s *Svc) successPairing(senderID string) {
 }
 
 func (s *Svc) isInvalidUser(curUser models.UserConvo, tarUser models.UserConvo) bool {
-	return curUser.TargetTwittID == tarUser.TwittID && tarUser.TargetTwittID == curUser.TwittID && tarUser.Status == models.InConvo
+	return curUser.TargetTwittID == tarUser.TwittID && tarUser.TargetTwittID == curUser.TwittID && tarUser.Status == status.InConvo
 }
 
 func (s *Svc) pairingProcess(senderID string, done chan<- bool) {
@@ -203,13 +204,13 @@ func (s *Svc) pairingProcess(senderID string, done chan<- bool) {
 		Convos.Lock()
 		users := Convos.Users
 		curUser := users[senderID]
-		if !curUser.Timeout {
-			curUser.Status = models.Ready
+		if curUser.Status != status.Timeout {
+			curUser.Status = status.Ready
 		}
 		targetTwittID := ""
 		for targetID, user := range users {
 			if s.isValidUserReadyToPair(senderID, user, curUser) {
-				curUser.Status = models.InConvo
+				curUser.Status = status.InConvo
 				curUser.TargetTwittID = user.TwittID
 				targetTwittID = targetID
 			}
@@ -227,7 +228,7 @@ func (s *Svc) pairingProcess(senderID string, done chan<- bool) {
 }
 
 func (s *Svc) isValidUserReadyToPair(senderID string, user models.UserConvo, curUser models.UserConvo) bool {
-	return user.TwittID != senderID && (user.Status == models.Ready || (user.Status == models.InConvo && user.TargetTwittID == senderID)) && curUser.Status == models.Ready
+	return user.TwittID != senderID && (user.Status == status.Ready || (user.Status == status.InConvo && user.TargetTwittID == senderID)) && curUser.Status == status.Ready
 }
 
 func (s *Svc) routingDirectMessage(event twitter.DirectMessageEvent, senderID string) {
@@ -239,7 +240,7 @@ func (s *Svc) routingDirectMessage(event twitter.DirectMessageEvent, senderID st
 	text := event.Message.Data.Text
 	users := Convos.Users
 	curUser := users[senderID]
-	if curUser.Status == models.InConvo {
+	if curUser.Status == status.InConvo {
 		s.sendDirectMessage(curUser.TargetTwittID, &twitter.DirectMessageData{
 			Text:       text,
 			QuickReply: NewQRBuilder().StopButton().Build(),
@@ -259,7 +260,7 @@ func (s *Svc) stopProcess(senderID string) {
 	curUser := users[senderID]
 	tarUser := users[curUser.TargetTwittID]
 
-	if curUser.Status != models.InConvo && tarUser.Status != models.InConvo {
+	if curUser.Status != status.InConvo && tarUser.Status != status.InConvo {
 		s.sendDirectMessage(curUser.TwittID, &twitter.DirectMessageData{
 			Text:       "[🤖] Invalid command! You must register or start first for stopping convo",
 			QuickReply: NewQRBuilder().RegisterButton().StartButton().Build(),
@@ -267,8 +268,8 @@ func (s *Svc) stopProcess(senderID string) {
 		return
 	}
 
-	curUser.Status = models.End
-	tarUser.Status = models.End
+	curUser.Status = status.End
+	tarUser.Status = status.End
 
 	curUser.TargetTwittID = ""
 	tarUser.TargetTwittID = ""
