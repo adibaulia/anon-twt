@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/adibaulia/anon-twt/internal/models"
+	"github.com/adibaulia/anon-twt/internal/models/status"
 	"github.com/adibaulia/anon-twt/internal/services"
 	"github.com/dghubble/go-twitter/twitter"
 	twitterV2 "github.com/g8rswimmer/go-twitter/v2"
@@ -126,14 +127,20 @@ func TestAll(t *testing.T) {
 
 	serviceWorker(DMEventStart, svc)
 	users := services.Convos.Users
+	countTimeout := 0
 	for key := range users {
+		services.Convos.Lock()
 		user := users[key]
-		if user.Timeout {
+		if user.Status == status.Timeout {
+			countTimeout++
 			continue
 		}
 		assert.Equal(t, user.TargetTwittID, users[user.TargetTwittID].TwittID)
 		assert.Equal(t, user.TwittID, users[user.TargetTwittID].TargetTwittID)
+		services.Convos.Unlock()
 	}
+
+	assert.Equal(t, countTimeout, 1)
 }
 
 func serviceWorker(DMEventStart []twitter.DirectMessageEvent, svc *services.Svc) {
