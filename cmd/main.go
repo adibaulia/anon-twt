@@ -19,5 +19,4 @@ func main() {
 	api.Router(r, svc)
 
 	r.Run(fmt.Sprintf(":%v", os.Getenv("PORT")))
-
 }
