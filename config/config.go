@@ -3,6 +3,7 @@ package config
 import (
 	"net/http"
 
+	"github.com/mitchellh/mapstructure"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/dghubble/go-twitter/twitter"
@@ -20,16 +21,18 @@ type (
 	Connection struct {
 		TwtCliV1 *twitter.Client
 		TwtCliV2 *twitterV2.Client
+		Port     string
 	}
 
 	Configuration struct {
-		APIKey            string `mapstructure:"APIKey"`
-		APIKeySecret      string `mapstructure:"APIKeySecret"`
-		BearerToken       string `mapstructure:"BearerToken"`
-		AccessToken       string `mapstructure:"AccessToken"`
-		AccessTokenSecret string `mapstructure:"AccessTokenSecret"`
-		LogLevel          string `mapstructure:"logLevel"`
-		LogPath           string `mapstructure:"logPath"`
+		APIKey            string `mapstructure:"API_KEY"`
+		APIKeySecret      string `mapstructure:"API_KEY_SECRET"`
+		BearerToken       string `mapstructure:"BEARER_TOKEN"`
+		AccessToken       string `mapstructure:"ACCESS_TOKEN"`
+		AccessTokenSecret string `mapstructure:"ACCESS_TOKEN_SECRET"`
+		LogPath           string `mapstructure:"LOG_PATH"`
+		LogLevel          string `mapstructure:"LOG_LEVEL"`
+		Port              string `mapstructure:"PORT" env:"PORT"`
 	}
 )
 
@@ -61,21 +64,34 @@ func init() {
 	instance = &Connection{
 		TwtCliV1: clientApiV1,
 		TwtCliV2: clientApiV2,
+		Port:     conf.Port,
 	}
 
 }
 func getConf() *Configuration {
 
+	conf := &Configuration{}
 	viper.AddConfigPath(".")
-	viper.SetConfigName("keys")
-	viper.SetConfigType("json")
+	viper.SetConfigName("app")
+	viper.SetConfigType("env")
+
+	viper.AutomaticEnv()
+	envKeysMap := &map[string]interface{}{}
+	if err := mapstructure.Decode(conf, &envKeysMap); err != nil {
+		log.Fatal(err)
+	}
+	for k := range *envKeysMap {
+		if bindErr := viper.BindEnv(k); bindErr != nil {
+			log.Fatal(bindErr)
+		}
+	}
 
 	err := viper.ReadInConfig()
 	if err != nil {
-		log.Fatalf("Cannot load configuration file: %v", err)
+		log.Errorf("Cannot load configuration file: %v", err)
+		log.Errorf("Reading from given env: %v", err)
 	}
 
-	conf := &Configuration{}
 	err = viper.Unmarshal(conf)
 	if err != nil {
 		log.Fatalf("Cannot unmarshall config: %v", err)

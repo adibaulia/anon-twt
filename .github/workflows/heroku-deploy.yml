@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - enhance/load-from-env
 
 jobs:
   build:
@@ -16,3 +17,11 @@ jobs:
           heroku_app_name: ${{secrets.HEROKU_APP_NAME}}
           heroku_email: ${{secrets.HEROKU_EMAIL}}
           usedocker: true
+        env:
+          HD_API_KEY: ${{secrets.HD_API_KEY}}
+          HD_API_KEY_SECRET: ${{secrets.HD_API_KEY_SECRET}}
+          HD_BEARER_TOKEN: ${{secrets.HD_BEARER_TOKEN}}
+          HD_ACCESS_TOKEN: ${{secrets.HD_ACCESS_TOKEN}}
+          HD_ACCESS_TOKEN_SECRET: ${{secrets.HD_ACCESS_TOKEN_SECRET}}
+          HD_LOG_PATH: ${{secrets.HD_LOG_PATH}}
+          HD_LOG_LEVEL: ${{secrets.HD_LOG_LEVEL}}

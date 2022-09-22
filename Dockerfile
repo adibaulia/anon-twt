@@ -19,7 +19,6 @@ ENV TZ=Asia/Jakarta
 
 WORKDIR /usr/bin
 COPY entry.sh /usr/bin/entry.sh
-COPY keys.json /usr/bin/keys.json
 COPY --from=build /go/bin .
 RUN chmod +x entry.sh
 
